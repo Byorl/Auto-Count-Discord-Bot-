@@ -1,0 +1,132 @@
+import asyncio
+import random
+import requests
+import re
+
+TOKEN = 'DISCORD_TOKEN'
+GUILD_ID = 'SERVER_ID'
+CHANNEL_ID = 'CHANNEL_ID'
+USER_ID = 'USER_ID'
+
+BASE_URL = 'https://discord.com/api/v10'
+
+headers = {
+    'Authorization': TOKEN
+}
+
+async def get_last_message(channel_id):
+    url = f"{BASE_URL}/channels/{channel_id}/messages?limit=1"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        messages = response.json()
+        return messages[0] if messages else None
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to fetch last message: {e}")
+        return None
+
+async def get_previous_message(channel_id, last_message_id):
+    url = f"{BASE_URL}/channels/{channel_id}/messages?before={last_message_id}&limit=1"
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        messages = response.json()
+        return messages[0] if messages else None
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to fetch previous message: {e}")
+        return None
+
+async def send_message(channel_id, content):
+    url = f"{BASE_URL}/channels/{channel_id}/messages"
+    data = {'content': content}
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        print(f"Sent message: {content}")
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to send message: {e}")
+
+async def send_typing_action(channel_id):
+    url = f"{BASE_URL}/channels/{channel_id}/typing"
+    try:
+        response = requests.post(url, headers=headers)
+        response.raise_for_status()
+        print("Simulating typing action...")
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to simulate typing action: {e}")
+
+def letter_to_number(letters):
+    return sum((ord(char.upper()) - ord('A') + 1) * (26 ** i) for i, char in enumerate(reversed(letters)))
+
+def number_to_letter(number, original_case):
+    letters = ""
+    while number > 0:
+        number -= 1
+        letters = chr(number % 26 + ord('A')) + letters
+        number //= 26
+    return letters.lower() if original_case == 'lower' else letters
+
+def extract_first_word(message):
+    return message.split()[0] if message else ""
+
+async def find_valid_message(channel_id, last_message):
+    while last_message:
+        content = last_message.get('content', '')
+        if content.startswith('.') or "has reached level" in content:
+            print(f"Skipping message: {content}. Checking the previous message...")
+            last_message = await get_previous_message(channel_id, last_message.get('id'))
+        else:
+            break
+    return last_message
+
+async def main():
+    last_message_id = None
+    while True:
+        last_message = await get_last_message(CHANNEL_ID)
+        if last_message:
+            current_message_id = last_message.get('id')
+            last_author_id = last_message.get('author', {}).get('id')
+            last_content = last_message.get('content', '')
+
+            if current_message_id != last_message_id:
+                print(f"Last message: {last_content} (Author ID: {last_author_id})")
+
+                if last_content.startswith('.') or "has reached level" in last_content:
+                    last_message = await find_valid_message(CHANNEL_ID, last_message)
+                    if not last_message:
+                        print("No valid previous message found. Skipping this turn.")
+                        continue
+                    last_author_id = last_message.get('author', {}).get('id')
+                    last_content = last_message.get('content', '')
+
+                if last_author_id != USER_ID:
+                    first_word = extract_first_word(last_content)
+
+                    if first_word.isalpha():
+                        original_case = 'upper' if first_word.isupper() else 'lower'
+                        next_value_number = letter_to_number(first_word) + 1
+                        next_value = number_to_letter(next_value_number, original_case)
+                        print(f"Calculated next value: {next_value}")
+
+                        delay = random.randint(3, 5)
+                        print(f"Waiting for {delay} seconds before simulating typing...")
+                        await asyncio.sleep(delay)
+
+                        await send_typing_action(CHANNEL_ID)
+
+                        typing_delay = random.randint(1, 3)
+                        print(f"Thinking for {typing_delay} seconds before sending the message...")
+                        await asyncio.sleep(typing_delay)
+
+                        updated_last_message = await get_last_message(CHANNEL_ID)
+                        if updated_last_message and updated_last_message['id'] == current_message_id:
+                            print(f"Still safe to send {next_value}. Sending now...")
+                            await send_message(CHANNEL_ID, next_value)
+                            last_message_id = updated_last_message['id']
+                        else:
+                            print("Another message was sent in the meantime. Skipping this turn.")
+
+        await asyncio.sleep(1)
+
+if __name__ == "__main__":
+    asyncio.run(main())
