@@ -7,7 +7,7 @@ import math
 TOKEN = 'DISCORD_TOKEN'
 GUILD_ID = 'SERVER_ID'
 CHANNEL_ID = 'CHANNEL_ID'
-USER_ID = 'PERSONAL USER ID'
+USER_ID = 'PERSONAL_USER_ID'
 
 BASE_URL = 'https://discord.com/api/v10'
 
